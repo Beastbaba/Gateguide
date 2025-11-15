@@ -1,13 +1,12 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  Platform,
-  Alert,
+  ScrollView,
+  Linking,
 } from 'react-native';
-import MapView, { Marker, Polyline, PROVIDER_DEFAULT } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons';
 import { GlassCard } from '../../components/GlassCard';
 import { useAppStore } from '../../store/appStore';
@@ -33,11 +32,7 @@ const GATES = [
 export default function MapScreen() {
   const insets = useSafeAreaInsets();
   const { userFlight } = useAppStore();
-  const mapRef = useRef<MapView>(null);
-  const [userLocation, setUserLocation] = useState(AIRPORT_CENTER);
   const [selectedGate, setSelectedGate] = useState<typeof GATES[0] | null>(null);
-  const [showRoute, setShowRoute] = useState(false);
-  const [routeCoordinates, setRouteCoordinates] = useState<Array<{ latitude: number; longitude: number }>>([]);
 
   useEffect(() => {
     if (userFlight) {
@@ -48,141 +43,17 @@ export default function MapScreen() {
     }
   }, [userFlight]);
 
-  const handleNavigate = () => {
+  const handleGetDirections = () => {
     if (selectedGate) {
-      setShowRoute(true);
-      mapRef.current?.fitToCoordinates([userLocation, selectedGate], {
-        edgePadding: { top: 100, right: 50, bottom: 300, left: 50 },
-        animated: true,
-      });
-      // Fetch route from Mapples API
-      fetchDirections();
+      const origin = `${AIRPORT_CENTER.latitude},${AIRPORT_CENTER.longitude}`;
+      const destination = `${selectedGate.latitude},${selectedGate.longitude}`;
+      const mapsUrl = `https://maps.google.com/?q=${destination}`;
+      Linking.openURL(mapsUrl);
     }
-  };
-
-  const handleRecenter = () => {
-    mapRef.current?.animateToRegion(
-      {
-        ...userLocation,
-        latitudeDelta: 0.01,
-        longitudeDelta: 0.01,
-      },
-      1000
-    );
-  };
-
-  // Fetch directions using Mapples API
-  const fetchDirections = async () => {
-    if (!selectedGate || !MAPPLES_API_KEY) {
-      console.log('Missing data:', { selectedGate, MAPPLES_API_KEY });
-      return;
-    }
-
-    try {
-      const url = `https://api.mappls.com/routes?origin=${userLocation.latitude},${userLocation.longitude}&destination=${selectedGate.latitude},${selectedGate.longitude}&key=${MAPPLES_API_KEY}&region=IND`;
-      console.log('Fetching route from:', url);
-      
-      const response = await fetch(url);
-      const data = await response.json();
-      console.log('Mapples Response:', data);
-
-      // Parse route coordinates from Mapples response
-      if (data.routes && data.routes[0] && data.routes[0].geometry) {
-        const coordinates = decodePolyline(data.routes[0].geometry);
-        setRouteCoordinates(coordinates);
-      } else {
-        console.warn('No route geometry found in response');
-        // Fallback to simple route if API fails
-        setRouteCoordinates([userLocation, selectedGate]);
-      }
-    } catch (error) {
-      console.error('Error fetching directions:', error);
-      // Fallback to simple route
-      setRouteCoordinates([userLocation, selectedGate]);
-    }
-  };
-
-  // Decode polyline from Mapples API
-  const decodePolyline = (encoded: string) => {
-    const inv = 1.0 / 1e5;
-    const decoded: Array<{ latitude: number; longitude: number }> = [];
-    let previous = [0, 0];
-    let i = 0;
-
-    while (i < encoded.length) {
-      const ll = [0, 0];
-      for (let j = 0; j < 2; j++) {
-        let shift = 0;
-        let result = 0;
-        let byte = 0;
-        do {
-          byte = encoded.charCodeAt(i++) - 63;
-          result |= (byte & 0x1f) << shift;
-          shift += 5;
-        } while (byte >= 0x20);
-        ll[j] = previous[j] + (result & 1 ? ~(result >> 1) : result >> 1);
-        previous[j] = ll[j];
-      }
-      decoded.push({
-        latitude: ll[0] * inv,
-        longitude: ll[1] * inv,
-      });
-    }
-    return decoded;
   };
 
   return (
     <View style={styles.container}>
-      <MapView
-        ref={mapRef}
-        style={styles.map}
-        provider={PROVIDER_DEFAULT}
-        initialRegion={{
-          ...AIRPORT_CENTER,
-          latitudeDelta: 0.01,
-          longitudeDelta: 0.01,
-        }}
-        showsUserLocation
-        showsMyLocationButton={false}
-        showsCompass={false}
-      >
-        {/* User Location */}
-        <Marker coordinate={userLocation} title="You are here">
-          <View style={styles.userMarker}>
-            <View style={styles.userMarkerInner} />
-          </View>
-        </Marker>
-
-        {/* Gates */}
-        {GATES.map((gate) => (
-          <Marker
-            key={gate.id}
-            coordinate={gate}
-            title={gate.name}
-            onPress={() => setSelectedGate(gate)}
-          >
-            <View
-              style={[
-                styles.gateMarker,
-                selectedGate?.id === gate.id && styles.gateMarkerSelected,
-              ]}
-            >
-              <Text style={styles.gateMarkerText}>{gate.id}</Text>
-            </View>
-          </Marker>
-        ))}
-
-        {/* Route */}
-        {showRoute && routeCoordinates.length > 0 && (
-          <Polyline
-            coordinates={routeCoordinates}
-            strokeColor="#6366f1"
-            strokeWidth={4}
-            lineDashPattern={[10, 5]}
-          />
-        )}
-      </MapView>
-
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 20 }]}>
         <GlassCard style={styles.headerCard}>
@@ -191,49 +62,87 @@ export default function MapScreen() {
         </GlassCard>
       </View>
 
-      {/* Recenter Button */}
-      <TouchableOpacity
-        style={[styles.recenterButton, { top: insets.top + 120 }]}
-        onPress={handleRecenter}
-      >
-        <LinearGradient
-          colors={['rgba(99, 102, 241, 0.9)', 'rgba(139, 92, 246, 0.9)']}
-          style={styles.recenterGradient}
-        >
-          <Ionicons name="locate" size={24} color="white" />
-        </LinearGradient>
-      </TouchableOpacity>
-
-      {/* Gate Info Card */}
-      {selectedGate && (
-        <View style={[styles.bottomCard, { paddingBottom: insets.bottom + 100 }]}>
-          <GlassCard>
-            <View style={styles.gateInfo}>
-              <View style={styles.gateHeader}>
-                <Ionicons name="log-in" size={32} color="#6366f1" />
-                <View style={styles.gateDetails}>
-                  <Text style={styles.gateName}>{selectedGate.name}</Text>
-                  {userFlight && selectedGate.id === userFlight.gate && (
-                    <Text style={styles.gateFlightNumber}>
-                      {userFlight.flightNumber} - {userFlight.destination}
+      {/* Gates List */}
+      <ScrollView style={styles.gatesList} contentContainerStyle={{ paddingBottom: insets.bottom + 120 }}>
+        <View style={styles.gatesContainer}>
+          <Text style={styles.sectionTitle}>Available Gates</Text>
+          
+          {GATES.map((gate) => (
+            <TouchableOpacity
+              key={gate.id}
+              onPress={() => setSelectedGate(gate)}
+              style={[
+                styles.gateCard,
+                selectedGate?.id === gate.id && styles.gateCardSelected,
+              ]}
+            >
+              <LinearGradient
+                colors={
+                  selectedGate?.id === gate.id
+                    ? ['rgba(99, 102, 241, 0.9)', 'rgba(139, 92, 246, 0.9)']
+                    : ['rgba(99, 102, 241, 0.1)', 'rgba(139, 92, 246, 0.1)']
+                }
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.gateGradient}
+              >
+                <View style={styles.gateCardContent}>
+                  <View style={styles.gateIcon}>
+                    <Ionicons 
+                      name="log-in" 
+                      size={24} 
+                      color={selectedGate?.id === gate.id ? 'white' : '#6366f1'} 
+                    />
+                  </View>
+                  <View style={styles.gateCardInfo}>
+                    <Text style={[styles.gateName, selectedGate?.id === gate.id && styles.gateNameSelected]}>
+                      {gate.name}
                     </Text>
+                    <Text style={styles.gateCoordinates}>
+                      📍 {gate.latitude.toFixed(4)}, {gate.longitude.toFixed(4)}
+                    </Text>
+                    {userFlight && gate.id === userFlight.gate && (
+                      <View style={styles.flightMatch}>
+                        <Ionicons name="checkmark-circle" size={16} color="#10b981" />
+                        <Text style={styles.flightMatchText}>Your gate: {userFlight.flightNumber}</Text>
+                      </View>
+                    )}
+                  </View>
+                  {selectedGate?.id === gate.id && (
+                    <Ionicons name="checkmark" size={24} color="white" />
                   )}
                 </View>
+              </LinearGradient>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </ScrollView>
+
+      {/* Bottom Action Card */}
+      {selectedGate && (
+        <View style={[styles.bottomCard, { paddingBottom: insets.bottom + 20 }]}>
+          <GlassCard>
+            <View style={styles.actionContent}>
+              <View>
+                <Text style={styles.selectedGateTitle}>Going to {selectedGate.name}</Text>
+                {userFlight && selectedGate.id === userFlight.gate && (
+                  <Text style={styles.flightInfo}>
+                    Flight {userFlight.flightNumber} to {userFlight.destination}
+                  </Text>
+                )}
               </View>
               <TouchableOpacity
-                style={styles.navigateButton}
-                onPress={handleNavigate}
+                style={styles.directionsButton}
+                onPress={handleGetDirections}
               >
                 <LinearGradient
                   colors={['#6366f1', '#8b5cf6']}
-                  style={styles.navigateGradient}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 1 }}
+                  style={styles.directionsGradient}
                 >
                   <Ionicons name="navigate" size={20} color="white" />
-                  <Text style={styles.navigateText}>
-                    {showRoute ? 'Hide Route' : 'Navigate'}
-                  </Text>
+                  <Text style={styles.directionsText}>Get Directions</Text>
                 </LinearGradient>
               </TouchableOpacity>
             </View>
@@ -248,9 +157,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#0f172a',
-  },
-  map: {
-    flex: 1,
   },
   header: {
     position: 'absolute',
@@ -271,6 +177,119 @@ const styles = StyleSheet.create({
     color: '#94a3b8',
     marginTop: 4,
   },
+  gatesList: {
+    flex: 1,
+    marginTop: 140,
+  },
+  gatesContainer: {
+    padding: 20,
+    gap: 12,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: 'white',
+    marginBottom: 8,
+  },
+  gateCard: {
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  gateCardSelected: {
+    shadowColor: '#6366f1',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  gateGradient: {
+    paddingVertical: 16,
+    paddingHorizontal: 12,
+  },
+  gateCardContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  gateIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  gateCardInfo: {
+    flex: 1,
+  },
+  gateName: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#6366f1',
+  },
+  gateNameSelected: {
+    color: 'white',
+  },
+  gateCoordinates: {
+    fontSize: 12,
+    color: '#cbd5e1',
+    marginTop: 4,
+  },
+  flightMatch: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 8,
+  },
+  flightMatchText: {
+    fontSize: 12,
+    color: '#10b981',
+    fontWeight: '600',
+  },
+  bottomCard: {
+    position: 'absolute',
+    bottom: 0,
+    left: 20,
+    right: 20,
+    marginBottom: 20,
+  },
+  actionContent: {
+    gap: 12,
+  },
+  selectedGateTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: 'white',
+  },
+  flightInfo: {
+    fontSize: 13,
+    color: '#94a3b8',
+    marginTop: 4,
+  },
+  directionsButton: {
+    borderRadius: 16,
+    overflow: 'hidden',
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+  },
+  directionsGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 14,
+  },
+  directionsText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  map: {
+    flex: 1,
+  },
   recenterButton: {
     position: 'absolute',
     right: 20,
@@ -289,12 +308,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  bottomCard: {
-    position: 'absolute',
-    bottom: 0,
-    left: 20,
-    right: 20,
-  },
   gateInfo: {
     gap: 16,
   },
@@ -304,11 +317,6 @@ const styles = StyleSheet.create({
   },
   gateDetails: {
     flex: 1,
-  },
-  gateName: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: 'white',
   },
   gateFlightNumber: {
     fontSize: 14,

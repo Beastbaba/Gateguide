@@ -1,16 +1,26 @@
-import { Text, View, StyleSheet, Image } from "react-native";
-
-const EXPO_PUBLIC_BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
+import { Text, View, StyleSheet, Image, ActivityIndicator } from "react-native";
+import { useEffect } from "react";
+import { useAppStore } from "../store/appStore";
 
 export default function Index() {
-  console.log(EXPO_PUBLIC_BACKEND_URL, "EXPO_PUBLIC_BACKEND_URL");
+  const { fetchFlights, fetchNotifications, loading } = useAppStore();
+
+  useEffect(() => {
+    // Fetch initial data from backend
+    fetchFlights();
+    fetchNotifications();
+  }, []);
 
   return (
     <View style={styles.container}>
-      <Image
-        source={require("../assets/images/app-image.png")}
-        style={styles.image}
-      />
+      {loading ? (
+        <ActivityIndicator size="large" color="#6366f1" />
+      ) : (
+        <Image
+          source={require("../assets/images/app-image.png")}
+          style={styles.image}
+        />
+      )}
     </View>
   );
 }
